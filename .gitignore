@@ -1,0 +1,24 @@
+# MinOS — generated build artifacts
+rootfs/
+os-root.squashfs
+myos.img
+initramfs-stage1.cpio
+initramfs.cpio
+build/boot.log
+.stamps/
+
+# Compiled binaries (built into rootfs/ by make)
+init/init
+supervisor/supervisor
+cgroup/cgmgr
+netd/netd
+runtime/minc
+
+# Object files
+*.o
+*.d
+
+# Editor / OS
+.DS_Store
+*.swp
+*~
