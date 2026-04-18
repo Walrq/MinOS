@@ -27,3 +27,10 @@ void load_seccomp(void);
 
 // In-container namespace setup (called after clone, before exec).
 void setup_namespaces(void);
+
+// Set up isolated container rootfs using OverlayFS + pivot_root.
+// Called inside the container child (CLONE_NEWNS context) before exec().
+// Creates per-container overlay dirs under /containers/<id>/ and pivots
+// the process into the new root so the host filesystem is fully hidden.
+void setup_rootfs(const char *id);
+

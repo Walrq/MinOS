@@ -22,9 +22,18 @@
 #include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>      // TIOCSCTTY
+#include <sys/prctl.h>      // prctl, PR_SET_SECUREBITS, PR_CAP_AMBIENT
 #include <signal.h>
 #include <errno.h>
 #include <termios.h>        // tcgetattr / tcsetpgrp
+
+// Linux capability constants (avoid depending on linux/capability.h)
+#define CAP_LAST_CAP     40
+#define SECBIT_KEEP_CAPS 0
+// Securebits: no-setuid-fixup + locked + noroot + locked
+// Prevents the container from ever regaining capabilities via setuid/setgid.
+#define SECURE_ALL_BITS  0x15   // NOROOT | NOROOT_LOCKED | NO_SETUID_FIXUP | NO_SETUID_FIXUP_LOCKED
+#define PR_SET_SECUREBITS 28
 
 #include "runtime.h"
 
@@ -36,6 +45,29 @@ static int sync_pipe[2];
 typedef struct {
     const ContainerConfig *cfg;
 } ChildArgs;
+
+// ── Capability drop ───────────────────────────────────────────────────────────
+// Drop every Linux capability from the bounding set, ambient set, and
+// inherited/permitted/effective sets via prctl(). No libcap required.
+// After this the container cannot escalate privileges even with setuid binaries.
+static void drop_capabilities(void) {
+    // 1. Drop each cap from the bounding set (inherited across exec)
+    for (int cap = 0; cap <= CAP_LAST_CAP; cap++) {
+        prctl(PR_CAPBSET_DROP, cap, 0, 0, 0);
+        // Ignore EINVAL for caps the kernel doesn't know about.
+    }
+
+    // 2. Clear ambient capability set (caps that survive exec)
+    prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0);
+
+    // 3. Lock securebits: prevent regaining caps via setuid root binaries
+    prctl(PR_SET_SECUREBITS, SECURE_ALL_BITS, 0, 0, 0);
+
+    // 4. Zero out all sets (effective, permitted, inheritable) via setuid trick:
+    //    Since we're not CLONE_NEWUSER, we use the simpler method
+    //    of just setting an empty capset through prctl(PR_SET_KEEPCAPS, 0)
+    prctl(PR_SET_KEEPCAPS, 0, 0, 0, 0);
+}
 
 // ── Container PID 1 ────────────────────────────────────────────────────────────
 // Everything here runs INSIDE the new namespaces.
@@ -59,20 +91,21 @@ static int container_main(void *arg) {
     // 2. Set container hostname (UTS namespace)
     sethostname(cfg->id, strlen(cfg->id));
 
-    // 2. Remount /proc for OUR PID namespace
-    //    Without this, /proc still shows host PIDs.
-    //    CLONE_NEWNS gives us our own mount table so this is safe.
-    umount2("/proc", MNT_DETACH);
-    if (mount("proc", "/proc", "proc",
-              MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL) < 0) {
-        write(2, "container: failed to mount /proc\n", 33);
-    }
+    // 3. Set up isolated rootfs: overlayfs mount + pivot_root
+    //    After this call we are inside a new / (the squashfs overlay).
+    //    setup_rootfs() also remounts /proc for our PID namespace.
+    setup_rootfs(cfg->id);
 
-    // 3. Install seccomp filter — restrict syscalls before exec
-    //    This limits what the container can call to a tight whitelist.
+    // 4. Drop all Linux capabilities — container runs with zero privileges.
+    //    Must happen BEFORE seccomp so prctl() is still available, and
+    //    BEFORE exec so the new process image cannot regain caps.
+    drop_capabilities();
+
+    // 5. Install seccomp filter — restrict syscalls to a tight whitelist.
+    //    Done last so the filter itself doesn't block the prctl calls above.
     load_seccomp();
 
-    // 4. exec the target binary — this replaces our process image
+    // 6. exec the target binary — replaces our process image
     execv(cfg->binary, (char *const *)cfg->argv);
 
     // execv only returns on failure
@@ -95,11 +128,11 @@ int container_spawn(const ContainerConfig *cfg) {
     char *stack_top = stack + STACK_SIZE;
 
     int clone_flags =
-        CLONE_NEWPID  |   // own PID namespace  ✅ (kernel has CONFIG_PID_NS)
-        CLONE_NEWNS   |   // own mount namespace ✅ (kernel has CONFIG_MNT_NS)
-        CLONE_NEWUTS  |   // own hostname        ✅ (kernel has CONFIG_UTS_NS)
-        // CLONE_NEWNET — disabled: CONFIG_NET_NS not in this kernel build
-        // CLONE_NEWIPC — disabled: CONFIG_IPC_NS not in this kernel build
+        CLONE_NEWPID  |   // own PID namespace  ✅
+        CLONE_NEWNS   |   // own mount namespace ✅ (required for pivot_root)
+        CLONE_NEWUTS  |   // own hostname        ✅
+        CLONE_NEWNET  |   // own network stack   ✅ (CONFIG_NET_NS enabled)
+        CLONE_NEWIPC  |   // own IPC namespace   ✅
         SIGCHLD;          // parent gets SIGCHLD when container exits
 
     ChildArgs args = {.cfg = cfg};

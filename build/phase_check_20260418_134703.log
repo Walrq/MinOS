@@ -1,0 +1,215 @@
+MinOS Phase Check — Sat Apr 18 13:47:03 UTC 2026
+Root: /home/anura/OS-final/MinOS
+Pass: 211  Warn: 0  Fail: 0
+
+PASS: Tool installed: gcc
+PASS: Tool installed: g++
+PASS: Tool installed: make
+PASS: Tool installed: flex
+PASS: Tool installed: bison
+PASS: Tool installed: qemu-system-x86_64
+PASS: Tool installed: mksquashfs
+PASS: Tool installed: dd
+PASS: Tool installed: file
+PASS: gcc can produce static binaries
+PASS: musl-gcc available: x86_64-linux-gnu-gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+PASS: QEMU version detected: QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.16)
+PASS: Dir exists: .
+PASS: File exists: Makefile
+PASS: Dir exists: kernel
+PASS: Dir exists: init
+PASS: Dir exists: supervisor
+PASS: Dir exists: runtime
+PASS: Dir exists: netd
+PASS: Dir exists: cgroup
+PASS: Dir exists: tools
+PASS: Dir exists: build
+PASS: Dir exists: rootfs
+PASS: Dir exists: docs
+PASS: File exists: kernel/bzImage
+PASS: Non-empty: kernel/bzImage
+PASS: File exists: kernel/config
+PASS: Non-empty: kernel/config
+PASS: File exists: kernel/build.sh
+PASS: bzImage size: 13 MB
+PASS: Kernel feature enabled: cgroups (CONFIG_CGROUPS)
+PASS: Kernel feature enabled: memory cgroup controller (cgroup v2) (CONFIG_MEMCG)
+PASS: Kernel feature enabled: CPU scheduling cgroup controller (CONFIG_CGROUP_SCHED)
+PASS: Kernel feature enabled: PIDs cgroup controller (CONFIG_CGROUP_PIDS)
+PASS: Kernel feature enabled: CFS group scheduling (cpu.weight) (CONFIG_FAIR_GROUP_SCHED)
+PASS: Kernel feature enabled: namespaces (CONFIG_NAMESPACES)
+PASS: Kernel feature enabled: PID namespaces (CONFIG_PID_NS)
+PASS: Kernel feature enabled: network namespaces (CONFIG_NET_NS)
+PASS: Kernel feature enabled: UTS namespaces (CONFIG_UTS_NS)
+PASS: Kernel feature enabled: user namespaces (uid/gid mapping) (CONFIG_USER_NS)
+PASS: Kernel feature enabled (built-in): overlayfs (CONFIG_OVERLAY_FS=y)
+PASS: Kernel feature enabled: seccomp (CONFIG_SECCOMP)
+PASS: Kernel feature enabled: seccomp BPF filter (CONFIG_SECCOMP_FILTER)
+PASS: Kernel feature enabled: virtio (CONFIG_VIRTIO)
+PASS: Kernel feature enabled: virtio networking (CONFIG_VIRTIO_NET)
+PASS: Kernel feature enabled: virtio block device (CONFIG_VIRTIO_BLK)
+PASS: File exists: init/main.c
+PASS: File exists: init/mount.c
+PASS: File exists: init/signal.c
+PASS: File exists: init/reaper.c
+PASS: Found in init/main.c: mount_filesystems() call
+PASS: Found in init/main.c: signal setup
+PASS: Found in init/main.c: zombie reaper
+PASS: Found in init/mount.c: mounts /proc
+PASS: Found in init/mount.c: mounts /sys
+PASS: Found in init/mount.c: mounts /dev
+PASS: Found in init/mount.c: mounts cgroup2
+PASS: Found in init/signal.c: SIGCHLD handler
+PASS: Found in init/reaper.c: waitpid() in reaper
+PASS: Executable: initramfs/init
+PASS: Static binary: initramfs/init
+PASS: File exists: rootfs/sbin/init
+PASS: Static binary: rootfs/sbin/init
+PASS: File exists: initramfs-stage1/init
+PASS: Found in initramfs-stage1/init: switch_root in stage-1
+PASS: Found in initramfs-stage1/init: overlay mount in stage-1
+PASS: Non-empty: initramfs-stage1.cpio
+PASS: File exists: supervisor/main.c
+PASS: File exists: supervisor/service.h
+PASS: File exists: supervisor/parser.c
+PASS: File exists: supervisor/reaper.c
+PASS: File exists: supervisor/spawn.c
+PASS: Found in supervisor/main.c: reads services.d directory
+PASS: Found in supervisor/main.c: spawns services
+PASS: Found in supervisor/main.c: monitors processes (supervision loop)
+PASS: Found in supervisor/parser.c: restart policy parsing
+PASS: Found in supervisor/reaper.c: waitpid in supervisor reaper
+PASS: Found in supervisor/spawn.c: fork+exec in spawn
+PASS: Found in supervisor/service.h: restart policy in header
+PASS: File exists: rootfs/services.d/console.conf
+PASS: Found in rootfs/services.d/console.conf: restart policy in console.conf
+PASS: Found in rootfs/services.d/console.conf: spawns /bin/sh
+PASS: Executable: initramfs/supervisor
+PASS: Static binary: initramfs/supervisor
+PASS: File exists: rootfs/supervisor
+PASS: File exists: cgroup/cgmgr.c
+PASS: File exists: cgroup/limits.c
+PASS: File exists: cgroup/limits.h
+PASS: File exists: cgroup/slices.conf
+PASS: Found in cgroup/cgmgr.c: controls CPU/memory/pids
+PASS: Found in cgroup/cgmgr.c: reads slices.conf
+PASS: Found in cgroup/limits.c: writes cgroup files
+PASS: Found in init/mount.c: init mounts cgroup2
+PASS: Found in init/mount.c: init enables controllers
+PASS: Non-empty: cgroup/slices.conf
+PASS: Found in cgroup/slices.conf: slice definitions
+PASS: Found in cgroup/slices.conf: resource limits defined
+PASS: Executable: initramfs/services/cgmgr
+PASS: Static binary: initramfs/services/cgmgr
+PASS: File exists: rootfs/services/cgmgr
+PASS: Host cgroup v2 filesystem mounted (unified hierarchy)
+PASS: cgroup.controllers exists: cpuset cpu io memory hugetlb pids rdma
+PASS: File exists: netd/netd.c
+PASS: File exists: netd/netd.h
+PASS: File exists: netd/bridge.c
+PASS: File exists: netd/veth.c
+PASS: File exists: netd/nat.c
+PASS: File exists: netd/net.conf
+PASS: Found in netd/bridge.c: creates osBr0 bridge
+PASS: Found in netd/bridge.c: uses netlink API
+PASS: Found in netd/veth.c: creates veth pairs
+PASS: Found in netd/nat.c: NAT setup
+PASS: Found in netd/netd.c: enables IP forwarding
+PASS: Non-empty: netd/net.conf
+PASS: Found in netd/net.conf: bridge IP/name config
+PASS: Executable: initramfs/services/netd
+PASS: Static binary: initramfs/services/netd
+PASS: File exists: rootfs/services/netd
+PASS: runtime/spawn.c references veth or CLONE_NEWNET
+PASS: File exists: runtime/minc.c
+PASS: File exists: runtime/spawn.c
+PASS: File exists: runtime/namespace.c
+PASS: File exists: runtime/rootfs.c
+PASS: File exists: runtime/seccomp.c
+PASS: File exists: runtime/runtime.h
+PASS: Found in runtime/spawn.c: uses CLONE_NEWPID
+PASS: Found in runtime/spawn.c: uses CLONE_NEWNS (mount namespace)
+PASS: Found in runtime/spawn.c: uses CLONE_NEWUTS
+PASS: Found in runtime/spawn.c: uses clone() syscall
+PASS: Found in runtime/spawn.c: assigns to cgroup
+PASS: Found in runtime/rootfs.c: uses pivot_root or chroot
+PASS: Found in runtime/rootfs.c: mounts overlayfs
+PASS: pivot_root() found — full rootfs isolation
+PASS: Found in runtime/seccomp.c: installs seccomp filter
+PASS: Found in runtime/seccomp.c: raw BPF filter
+PASS: Found in runtime/seccomp.c: architecture check
+PASS: Capability drop / prctl found
+PASS: Executable: rootfs/bin/minc
+PASS: Static binary: rootfs/bin/minc
+PASS: minc binary shows usage correctly
+PASS: Non-empty: myos.img
+PASS: myos.img size: 512 MB
+PASS: Non-empty: os-root.squashfs
+PASS: os-root.squashfs is a valid squashfs image
+PASS: Dir exists: rootfs
+PASS: File exists: rootfs/sbin/init
+PASS: File exists: rootfs/supervisor
+PASS: Dir exists: rootfs/bin
+PASS: File exists: rootfs/bin/minc
+PASS: Dir exists: rootfs/services
+PASS: Dir exists: rootfs/services.d
+PASS: File exists: rootfs/slices.conf
+PASS: File exists: rootfs/etc/net.conf
+PASS: File exists: syslinux/syslinux.cfg
+PASS: Found in syslinux/syslinux.cfg: references kernel image
+PASS: Found in syslinux/syslinux.cfg: references initramfs
+PASS: File exists: build/mkdisk.sh
+PASS: File exists: build/mkrootfs.sh
+PASS: File exists: build/mksquashfs.sh
+PASS: File exists: build/mkstage1.sh
+PASS: File exists: Makefile
+PASS: File exists: build/Makefile
+PASS: File exists: build/build-all.sh
+PASS: File exists: build/qemu.sh
+PASS: File exists: build/qemu-disk.sh
+PASS: File exists: build/verify.sh
+PASS: Makefile target exists: all
+PASS: Makefile target exists: init
+PASS: Makefile target exists: daemons
+PASS: Makefile target exists: tools
+PASS: Makefile target exists: image
+PASS: Makefile target exists: clean
+PASS: Found in build/qemu.sh: qemu.sh uses qemu-system-x86_64
+PASS: Found in build/qemu.sh: qemu.sh boots disk image (disk-boot mode)
+PASS: Found in build/qemu.sh: qemu.sh uses virtio block device
+PASS: Found in build/qemu.sh: qemu.sh uses serial console (ttyS0)
+PASS: Found in build/qemu-disk.sh: qemu-disk.sh references disk image
+PASS: Found in build/qemu-disk.sh: qemu-disk.sh uses qemu-system-x86_64
+PASS: boot.log exists (last boot recorded)
+PASS: File exists: tools/cginspect.c
+PASS: File exists: tools/nslist.c
+PASS: File exists: tools/netstat.c
+PASS: Executable: rootfs/bin/cginspect
+PASS: Executable: rootfs/bin/nslist
+PASS: Static binary: rootfs/bin/cginspect
+PASS: Static binary: rootfs/bin/nslist
+PASS: Found in tools/cginspect.c: reads cgroup v2 files
+PASS: Found in tools/nslist.c: reads /proc namespace links
+PASS: Found in runtime/seccomp.c: arch check prevents 32-bit bypass
+PASS: Seccomp whitelist has ~136 syscall references
+PASS: Found in runtime/namespace.c: writes uid_map/gid_map
+PASS: SquashFS root exists — rootfs is inherently read-only
+PASS: dm-verity references found (optional feature implemented)
+PASS: File exists: build/verify.sh
+PASS: build/verify.sh is executable
+PASS: Dir exists: docs
+PASS: File exists: docs/boot-sequence.md
+PASS: File exists: docs/cgroup-layout.md
+PASS: File exists: docs/design.md
+PASS: Valid ELF binary: initramfs/init
+PASS: Valid ELF binary: initramfs/supervisor
+PASS: Valid ELF binary: initramfs/services/cgmgr
+PASS: Valid ELF binary: initramfs/services/netd
+PASS: Valid ELF binary: rootfs/sbin/init
+PASS: Valid ELF binary: rootfs/supervisor
+PASS: Valid ELF binary: rootfs/bin/minc
+PASS: Valid ELF binary: rootfs/bin/cginspect
+PASS: Valid ELF binary: rootfs/bin/nslist
+PASS: Valid ELF binary: rootfs/services/cgmgr
+PASS: Valid ELF binary: rootfs/services/netd
+PASS: make -n all succeeds (build system consistent)

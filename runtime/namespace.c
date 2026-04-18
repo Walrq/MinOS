@@ -40,12 +40,13 @@ void write_uid_map(pid_t pid) {
     int  n;
 
     // Step 1: Write "deny" to /proc/$pid/setgroups before writing gid_map.
-    // Required by kernel since Linux 3.19 to prevent privilege escalation
-    // (setgroups() could be used to drop supplementary groups).
+    // Required by kernel since Linux 3.19 to prevent privilege escalation.
+    // NOTE: This only works when CLONE_NEWUSER is used. Since MinOS containers
+    // currently run without user namespaces (CLONE_NEWUSER not in clone flags),
+    // this write will fail with EACCES/ENOENT — that is expected and harmless.
     snprintf(path, sizeof(path), "/proc/%d/setgroups", (int)pid);
     if (write_proc(path, "deny") < 0) {
-        // Non-fatal if user namespaces not supported
-        write(2, "[ns] WARNING: could not write setgroups (user ns not available?)\n", 65);
+        // No user namespace active — uid/gid mapping not applicable. Skip silently.
         return;
     }
 
