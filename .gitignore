@@ -1,24 +1,49 @@
-# MinOS — generated build artifacts
-rootfs/
-os-root.squashfs
+# MinOS — Compiled artifacts
 myos.img
+os-root.squashfs
 initramfs-stage1.cpio
 initramfs.cpio
-build/boot.log
-.stamps/
+*.cpio
 
-# Compiled binaries (built into rootfs/ by make)
+# Compiled binaries (rebuilt by make)
 init/init
 supervisor/supervisor
 cgroup/cgmgr
 netd/netd
 runtime/minc
+tools/cginspect
+tools/nslist
+bin/mingetty
 
-# Object files
+# Kernel binary (large — rebuild with make kernel)
+kernel/bzImage
+
+# Build state
+.stamps/
+build/boot.log
+build/stage1-root/
+build/phase_check_*.log
+
+# Object files & dependency files
 *.o
 *.d
 
-# Editor / OS
+# Stray root-level binaries (artifacts from bad builds)
+supervisor.bin
+supervisor_bin
+
+# Merge conflict leftovers
+*.resolved
+*.orig
+
+# Windows Zone.Identifier files (WSL artifact)
+*Zone.Identifier
+*.Identifier
+
+# Editor / OS junk
 .DS_Store
 *.swp
 *~
+\#*\#
+.idea/
+*.code-workspace
