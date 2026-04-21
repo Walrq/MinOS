@@ -244,7 +244,7 @@ bash build/check_phases.sh --phase=7
 #   WARN: 0
 #   FAIL: 0
 #   Overall health: 100% (211/211 checks passed)
-#   🎉 ALL CHECKS PASSED — MinOS is fully built and ready!
+#   ALL CHECKS PASSED — MinOS is fully built and ready!
 ```
 
 ---
@@ -263,9 +263,3 @@ bash build/check_phases.sh --phase=7
 | 8 | Bootable disk image | ✅ |
 | 9 | Build system automation | ✅ |
 | 10 | Hardening + diagnostic tools | ✅ |
-
----
-
-## License
-
-MIT
