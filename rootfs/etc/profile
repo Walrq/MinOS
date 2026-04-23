@@ -1,0 +1,15 @@
+# MinOS /etc/profile
+export HOME=/root
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+alias ps="ps | grep -v \"\[\"" 
+alias ll="ls -la"
+alias cls="printf \"\033c\""
+export PS1="minos:\w# "
+dmesg -n 1 2>/dev/null || true
+cd /root
+echo ""
+echo "  +------------------------------------------+"
+echo "  |      MinOS  --  Container OS             |"
+echo "  |  init  supervisor  minc  mintab           |"
+echo "  +------------------------------------------+"
+echo ""

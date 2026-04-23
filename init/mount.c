@@ -20,8 +20,19 @@ void mount_filesystems(void) {
     mount("dev", "/dev", "devtmpfs",
           MS_NOSUID | MS_NOEXEC, NULL);
 
+    // /dev/pts — pseudo-terminal slaves (needed by forkpty / mintab)
+    mkdir("/dev/pts", 0755);
+    mount("devpts", "/dev/pts", "devpts",
+          MS_NOSUID | MS_NOEXEC, "newinstance,ptmxmode=0666");
+
     // /tmp — in-memory scratch space
+    mkdir("/tmp", 0755);
     mount("tmp", "/tmp", "tmpfs",
+          MS_NOSUID | MS_NODEV, NULL);
+
+    // /run — runtime data (PID files, sockets like /run/mintab.sock)
+    mkdir("/run", 0755);
+    mount("run", "/run", "tmpfs",
           MS_NOSUID | MS_NODEV, NULL);
 
     // /sys/fs/cgroup — cgroup v2 unified hierarchy

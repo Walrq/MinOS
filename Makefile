@@ -32,9 +32,10 @@ MEMHOG_BIN    := $(ROOTFS)/bin/memhog
 DEMO_BIN      := $(ROOTFS)/bin/demo
 SYSMON_BIN    := $(ROOTFS)/bin/sysmon
 PYRUN_BIN     := $(ROOTFS)/bin/pyrun
+MINTAB_BIN    := $(ROOTFS)/bin/mintab
 
 # ── Config dependencies ───────────────────────────────────────────────────────
-CONFIGS := $(wildcard services.d/cgmgr.conf services.d/netd.conf) \
+CONFIGS := $(wildcard services.d/cgmgr.conf services.d/netd.conf services.d/mintab.conf) \
            $(wildcard netd/net.conf cgroup/slices.conf)
 BUSYBOX := $(shell which busybox 2>/dev/null)
 
@@ -73,14 +74,33 @@ kernel/bzImage:
 	else \
 	    echo "  [!] WARNING: busybox not found"; \
 	fi
-	@[ -f services.d/cgmgr.conf ] && cp services.d/cgmgr.conf $(ROOTFS)/services.d/ || true
-	@[ -f services.d/netd.conf  ] && cp services.d/netd.conf  $(ROOTFS)/services.d/ || true
-	@printf 'name=console\nbin=/bin/sh\nrestart=always\n' \
+	@[ -f services.d/cgmgr.conf  ] && cp services.d/cgmgr.conf  $(ROOTFS)/services.d/ || true
+	@[ -f services.d/netd.conf   ] && cp services.d/netd.conf   $(ROOTFS)/services.d/ || true
+	@[ -f services.d/mintab.conf ] && cp services.d/mintab.conf $(ROOTFS)/services.d/ || true
+	@printf 'name=console\nbin=/bin/sh\nargs=-l\nrestart=always\n' \
 	    > $(ROOTFS)/services.d/console.conf
 	@[ -f netd/net.conf      ] && cp netd/net.conf      $(ROOTFS)/etc/net.conf  || true
 	@[ -f cgroup/slices.conf ] && cp cgroup/slices.conf $(ROOTFS)/slices.conf   || true
+	@mkdir -p $(ROOTFS)/root
+	@printf '%s\n' \
+	    '# MinOS /etc/profile' \
+	    'export HOME=/root' \
+	    'export PATH=/usr/bin:/bin:/usr/sbin:/sbin' \
+	    'alias ps="ps | grep -v \"\[\"" ' \
+	    'alias ll="ls -la"' \
+	    'alias cls="printf \"\033c\""' \
+	    'export PS1="minos:\w# "' \
+	    'dmesg -n 1 2>/dev/null || true' \
+	    'cd /root' \
+	    'echo ""' \
+	    'echo "  +------------------------------------------+"' \
+	    'echo "  |      MinOS  --  Container OS             |"' \
+	    'echo "  |  init  supervisor  minc  mintab           |"' \
+	    'echo "  +------------------------------------------+"' \
+	    'echo ""' \
+	    > $(ROOTFS)/etc/profile
 	@touch .stamps/rootfs-setup
-	@echo "  [+] configs installed"
+	@echo "  [+] configs + profile installed"
 
 # ── Compile: init ─────────────────────────────────────────────────────────────
 $(INIT_BIN): $(INIT_SRCS) | .stamps/rootfs-setup
@@ -159,20 +179,32 @@ $(PYRUN_BIN): projects/pyrun/pyrun.c | .stamps/rootfs-setup
 	$(CC) $(CFLAGS) -o $@ $<
 	@chmod +x $@ && echo "  → $@"
 
+# ── Compile: mintab (session multiplexer) ─────────────────────────────────────────
+$(MINTAB_BIN): tools/mintab.c | .stamps/rootfs-setup
+	@echo "━━━ [CC] mintab ━━━"
+	@mkdir -p $(@D)
+	$(CC) -static -O2 -o $@ $< || $(CC) -static -O2 -o $@ $< -lutil
+	@chmod +x $@ && echo "  → $@"
+
+# ── Langs: stage Python + TCC into rootfs/ ────────────────────────────────────────
+langs:
+	bash build/setup-langs.sh
+
 # ── Named targets for compilation groups ─────────────────────────────────────
 init:    $(INIT_BIN)
 daemons: $(SUP_BIN) $(CGMGR_BIN) $(NETD_BIN) $(MINC_BIN)
-tools:   $(CGINSPECT_BIN) $(NSLIST_BIN) $(MEMHOG_BIN) $(DEMO_BIN) $(SYSMON_BIN) $(PYRUN_BIN)
+tools:   $(CGINSPECT_BIN) $(NSLIST_BIN) $(MEMHOG_BIN) $(DEMO_BIN) $(SYSMON_BIN) $(PYRUN_BIN) $(MINTAB_BIN)
 
 # ── Stage-1 initramfs ─────────────────────────────────────────────────────────
 initramfs-stage1.cpio: $(wildcard initramfs-stage1/*) $(BUSYBOX)
-	@echo "━━━ [stage1] packing initramfs ━━━"
+	@echo "━━━ [INFO:] packing initramfs ━━━"
 	bash build/mkstage1.sh
 
 # ── Squashfs OS root ──────────────────────────────────────────────────────────
 os-root.squashfs: $(INIT_BIN) $(SUP_BIN) $(CGMGR_BIN) $(NETD_BIN) $(MINC_BIN) \
                    $(CGINSPECT_BIN) $(NSLIST_BIN) $(MEMHOG_BIN) \
-                   $(DEMO_BIN) $(SYSMON_BIN) $(PYRUN_BIN) \
+                   $(DEMO_BIN) $(SYSMON_BIN) $(PYRUN_BIN) $(MINTAB_BIN) \
+                   rootfs/home/todo.py \
                    .stamps/rootfs-setup
 	@echo "━━━ [squashfs] packing OS root ━━━"
 	bash build/mksquashfs.sh

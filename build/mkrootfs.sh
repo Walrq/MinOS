@@ -85,16 +85,56 @@ mkdir -p "$ROOTFS/etc"
 [ -f "$MINOS_DIR/netd/net.conf" ] && cp "$MINOS_DIR/netd/net.conf" "$ROOTFS/etc/net.conf"
 
 # Service configs — only copy ones whose binaries exist in rootfs
-cp "$MINOS_DIR/services.d/cgmgr.conf"  "$ROOTFS/services.d/cgmgr.conf"
-cp "$MINOS_DIR/services.d/netd.conf"   "$ROOTFS/services.d/netd.conf"
+cp "$MINOS_DIR/services.d/cgmgr.conf"   "$ROOTFS/services.d/cgmgr.conf"
+cp "$MINOS_DIR/services.d/netd.conf"    "$ROOTFS/services.d/netd.conf"
+cp "$MINOS_DIR/services.d/mintab.conf"  "$ROOTFS/services.d/mintab.conf"
 
 # Console service — launches an interactive shell on the serial console
 # (inherits init's stdin/stdout which is ttyS0)
 cat > "$ROOTFS/services.d/console.conf" <<'EOF'
 name=console
 bin=/bin/sh
+args=-l
 restart=always
 EOF
+
+# Shell profile — loaded by 'sh -l' (login shell)
+# Sets up aliases and prints the MinOS welcome banner
+cat > "$ROOTFS/etc/profile" <<'EOF'
+# MinOS /etc/profile
+
+# Home directory
+export HOME=/root
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+
+# Aliases
+alias ps='ps | grep -v "\["'
+alias ll='ls -la'
+alias cls='printf "\033c"'
+
+# Prompt: show  minos:/current/dir#
+export PS1='\[\033[1;32m\]minos\[\033[0m\]:\[\033[1;34m\]\w\[\033[0m\]# '
+
+# Suppress kernel log spam to console (errors only)
+dmesg -n 1 2>/dev/null || true
+
+# Start in home directory
+cd "$HOME"
+
+# Welcome banner
+cat <<'BANNER'
+
+  ╔══════════════════════════════════════════╗
+  ║           MinOS — Container OS           ║
+  ║  init · supervisor · minc · mintab       ║
+  ╚══════════════════════════════════════════╝
+  Type 'mintab new minc run -t /bin/sh'
+       'mintab list'   'mintab attach <id>'
+BANNER
+EOF
+
+# Create /root home directory
+mkdir -p "$ROOTFS/root"
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 echo ""

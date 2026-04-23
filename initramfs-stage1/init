@@ -23,7 +23,7 @@ fi
 
 mkdir -p /mnt /squash /newroot
 
-echo "[stage1] waiting for boot disk..."
+echo "[INFO:] waiting for boot disk..."
 BOOT=""   # e.g. /dev/vda1
 SQFS=""   # e.g. /dev/vda2
 TRIES=0
@@ -38,25 +38,25 @@ while [ $TRIES -lt 30 ]; do
 done
 
 if [ -z "$SQFS" ]; then
-    echo "[stage1] ERROR: no boot disk found"
-    echo "[stage1] Available block devices:"
+    echo "[INFO:] ERROR: no boot disk found"
+    echo "[INFO:] Available block devices:"
     cat /proc/partitions 2>/dev/null
     exec /bin/sh
 fi
-echo "[stage1] Boot: $BOOT   Squashfs: $SQFS"
+echo "[INFO:] Boot: $BOOT   Squashfs: $SQFS"
 
 # Mount boot partition (ext4, rw — hosts the persistent overlay)
-echo "[stage1] mounting boot partition ($BOOT)..."
+echo "[INFO:] mounting boot partition ($BOOT)..."
 mount -t ext4 "$BOOT" /mnt || {
-    echo "[stage1] ERROR: could not mount $BOOT as ext4"
+    echo "[INFO:] ERROR: could not mount $BOOT as ext4"
     exec /bin/sh
 }
 
 # Mount squashfs DIRECTLY as a block device — no loop device needed!
-echo "[stage1] mounting squashfs OS root ($SQFS)..."
+echo "[INFO:] mounting squashfs OS root ($SQFS)..."
 mount -t squashfs -o ro "$SQFS" /squash || {
-    echo "[stage1] ERROR: squashfs mount of $SQFS failed"
-    echo "[stage1] Kernel squashfs support:"
+    echo "[INFO:] ERROR: squashfs mount of $SQFS failed"
+    echo "[INFO:] Kernel squashfs support:"
     grep squashfs /proc/filesystems 2>/dev/null || echo "  not found"
     exec /bin/sh
 }
@@ -65,12 +65,12 @@ mount -t squashfs -o ro "$SQFS" /squash || {
 mkdir -p /mnt/overlay/upper /mnt/overlay/work
 
 # Mount overlay: reads from squashfs, writes to ext4 (persist across reboots)
-echo "[stage1] mounting overlay..."
+echo "[INFO:] mounting overlay..."
 mount -t overlay overlay \
     -o lowerdir=/squash,upperdir=/mnt/overlay/upper,workdir=/mnt/overlay/work \
     /newroot || {
-    echo "[stage1] ERROR: overlay mount failed"
-    echo "[stage1] Kernel overlay support:"
+    echo "[INFO:] ERROR: overlay mount failed"
+    echo "[INFO:] Kernel overlay support:"
     grep overlay /proc/filesystems 2>/dev/null || echo "  not found"
     exec /bin/sh
 }
@@ -83,5 +83,5 @@ mount --move /sys   /newroot/sys
 # /sbin/init (init/main.c) mounts devtmpfs fresh at /dev after switch_root.
 mount --move /mnt   /newroot/mnt   # boot partition visible at /mnt in new root
 
-echo "[stage1] switching to OS root..."
+echo "[INFO:] switching to OS root..."
 exec switch_root /newroot /sbin/init

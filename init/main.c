@@ -39,7 +39,7 @@ int main(void) {
     mount_filesystems();   // Step 2
     setup_signals();       // Step 3
 
-    start_supervisor();         // 👈 NEW (Step 3.5)
+    start_supervisor();         // NEW (Step 3.5)
 
     // Main loop — reap zombies forever
     while (1) {

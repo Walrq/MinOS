@@ -195,6 +195,8 @@ static struct sock_filter seccomp_filter[] = {
     ALLOW(__NR_prlimit64),
     ALLOW(__NR_sched_getaffinity),
     ALLOW(__NR_sched_setaffinity),
+    ALLOW(__NR_sched_getparam),
+    ALLOW(__NR_sched_getscheduler),
     ALLOW(__NR_sched_yield),
     ALLOW(__NR_getrandom),
     ALLOW(__NR_set_tid_address),
@@ -203,6 +205,41 @@ static struct sock_filter seccomp_filter[] = {
     ALLOW(__NR_uname),
     ALLOW(__NR_umount2),
     ALLOW(__NR_mount),
+    ALLOW(__NR_capget),
+    ALLOW(__NR_capset),
+
+    // ── Python 3.10+ / TCC specific ───────────────────────────────────────
+    // statx    — Python uses statx() for os.stat() on kernel >= 4.11
+    // clone3   — newer glibc threading uses clone3() instead of clone()
+    // timerfd  — asyncio event loop
+    // utimensat / fchownat / fchmodat — os module file operations
+    // memfd_create — Python internal memory operations
+    // sendfile — os.sendfile()
+    // copy_file_range — shutil optimizations
+    ALLOW(__NR_statx),
+    ALLOW(__NR_clone3),
+    ALLOW(__NR_timerfd_create),
+    ALLOW(__NR_timerfd_settime),
+    ALLOW(__NR_timerfd_gettime),
+    ALLOW(__NR_utimensat),
+    ALLOW(__NR_fchownat),
+    ALLOW(__NR_fchmodat),
+    ALLOW(__NR_memfd_create),
+    ALLOW(__NR_sendfile),
+    ALLOW(__NR_copy_file_range),
+    ALLOW(__NR_inotify_init1),
+    ALLOW(__NR_inotify_add_watch),
+    ALLOW(__NR_inotify_rm_watch),
+    ALLOW(__NR_signalfd4),
+    ALLOW(__NR_setuid),
+    ALLOW(__NR_setgid),
+    ALLOW(__NR_setgroups),
+    ALLOW(__NR_mlock),
+    ALLOW(__NR_munlock),
+    ALLOW(__NR_mlockall),
+    ALLOW(__NR_munlockall),
+    ALLOW(__NR_getresuid),
+    ALLOW(__NR_getresgid),
 
     // ── Default: deny everything else ─────────────────────────────────────
     DENY_CALL,

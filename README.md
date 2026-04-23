@@ -1,321 +1,212 @@
 # MinOS
 
-A minimal, from-scratch Linux-based operating system with an integrated container runtime, built as an OS course project.
+A minimal, container-native operating system built from scratch in C.
 
-MinOS boots a custom kernel into a custom C `init`, runs a service supervisor, and provides `minc` — a lightweight container runtime with full namespace isolation, OverlayFS rootfs, cgroup v2 resource limits, capability dropping, and a BPF seccomp whitelist.
+MinOS boots a custom Linux kernel into a compressed **SquashFS** read-only root, layers an **OverlayFS** writable upper layer on top, and runs a hand-written `init` binary as PID 1. Containers are isolated using Linux namespaces, cgroup v2 resource limits, and a seccomp BPF syscall whitelist — all implemented without any container framework.
 
 ---
 
 ## Features
 
-- **Custom kernel** — minimal Linux config with cgroup v2, namespaces, SquashFS, OverlayFS, virtio, and seccomp
-- **Custom init (PID 1)** — written in C; mounts `/proc /sys /dev`, sets up cgroup v2, launches the supervisor
-- **Service supervisor** — reads `services.d/`, spawns services, monitors with `waitpid`, auto-restarts on failure
-- **cgroup v2 resource manager (`cgmgr`)** — one-shot setup: creates `system/` and `containers/` slices with cpu/memory/pids limits
-- **Network daemon (`netd`)** — creates `osBr0` bridge at `10.0.0.1/24`, enables IP forwarding and NAT masquerade
-- **Container runtime (`minc`)** — runs isolated containers with:
-  - `CLONE_NEWPID` · `CLONE_NEWNS` · `CLONE_NEWUTS` · `CLONE_NEWNET` · `CLONE_NEWIPC`
-  - OverlayFS rootfs (SquashFS lower + tmpfs upper/work + `pivot_root`)
-  - Capability drop (all 41 bounding set caps cleared, ambient cleared, securebits locked)
-  - BPF seccomp syscall whitelist
-  - cgroup v2 assignment for CPU / memory / PIDs limits (`-m <mb>` flag)
-- **Diagnostic tools** — `cginspect` (cgroup tree viewer), `nslist` (namespace inspector)
-- **Demo suite** — `demo`, `sysmon`, `pyrun`, `memhog` — see [Demo](#demo)
-- **Two-stage initramfs** — stage-1 shell script mounts `/dev/vda1` (ext4) + `/dev/vda2` (SquashFS), builds an OverlayFS root, then `switch_root`s into the OS
-- **Bootable disk image** — 512 MB raw image with extlinux bootloader, fully built from the Makefile
+| Feature | Implementation |
+|---|---|
+| Custom `init` (PID 1) | `init/` — mounts filesystems, starts supervisor |
+| Service supervisor | `supervisor/` — auto-restart, service configs |
+| Container runtime (`minc`) | `runtime/` — namespaces, OverlayFS, pivot_root |
+| cgroup v2 resource limits | `cgroup/` — memory, PID, CPU enforcement |
+| Container networking | `netd/` — bridge, veth pairs, NAT |
+| Seccomp BPF filter | `runtime/seccomp.c` — ~60 syscall whitelist |
+| Session multiplexer (`mintab`) | `tools/mintab.c` — multiple containers simultaneously |
+| Python 3.12 in containers | `build/setup-langs.sh` — musl-linked static binary |
+| SquashFS + OverlayFS root | `build/mksquashfs.sh`, `initramfs-stage1/` |
 
 ---
 
 ## Architecture
 
 ```
-myos.img (512 MB raw disk)
-├── /dev/vda1  ext4          ← boot partition: extlinux + bzImage + stage-1 initramfs
-└── /dev/vda2  SquashFS      ← read-only OS root (rootfs/)
-
-Boot sequence:
-  BIOS → extlinux → bzImage
-    → initramfs-stage1/init (shell)
-        mounts vda1 (ext4) + vda2 (squashfs)
-        overlayfs: lower=/squash  upper=/mnt/overlay/upper (ext4)
-        switch_root /newroot /sbin/init
-    → init/main.c  (PID 1)
-        mount /proc /sys /dev /tmp
-        enable cgroup v2 controllers
-        exec supervisor
-    → supervisor/main.c
-        spawn: cgmgr (one-shot)  netd (one-shot)  console (/bin/sh)
-    → /bin/sh  (interactive console)
+┌──────────────────────────────────────────────────┐
+│              User Programs                        │
+│   minc  │  mintab  │  python3  │  /bin/sh        │
+├──────────────────────────────────────────────────┤
+│   Supervisor  (service manager, auto-restart)    │
+├──────────────────────────────────────────────────┤
+│   init  (PID 1, hand-written C, no systemd)      │
+├──────────────────────────────────────────────────┤
+│   SquashFS (read-only) + OverlayFS (writable)    │
+├──────────────────────────────────────────────────┤
+│   Linux Kernel (custom minimal config)           │
+└──────────────────────────────────────────────────┘
 ```
 
-```
-Container lifecycle (minc run -t -m 10 /bin/sh):
-  clone(CLONE_NEWPID|NS|UTS|NET|IPC)
-    wait for cgroup assignment (sync pipe)
-    write pid → /sys/fs/cgroup/containers/<id>/cgroup.procs
-    write memory.max, pids.max, cpu.weight
-    setup_rootfs():
-      mount tmpfs → /run/containers/<id>/
-      bind /squash → lower/
-      overlayfs lower+upper+work → merged/
-      pivot_root merged/ → /   (host fs now invisible)
-      mount proc, devtmpfs, devpts
-    drop_capabilities()    ← bounding + ambient + securebits
-    load_seccomp()         ← BPF whitelist
-    execv(binary)
-```
+**Boot sequence:**
+1. QEMU loads kernel + initramfs (stage 1)
+2. Stage-1 shell script finds and mounts SquashFS → `/squash`
+3. OverlayFS is mounted: `lower=/squash, upper=ext4 partition`
+4. `switch_root` → custom `/sbin/init`
+5. init mounts `/proc`, `/sys`, `/dev`, `/run`, `/tmp`, cgroups
+6. Supervisor starts: `cgmgr`, `netd`, `mintab`, `console` (shell)
 
 ---
 
-## Directory Structure
+## Project Structure
 
 ```
 MinOS/
-├── init/               PID 1 — mount, signal, reaper
-├── supervisor/         Service supervisor — parser, spawn, reaper
-├── cgroup/             cgmgr — cgroup v2 slice manager
-├── netd/               Network daemon — bridge + NAT
-├── runtime/            minc container runtime
-│   ├── minc.c          CLI + flag parsing (-t, -m)
-│   ├── spawn.c         clone() + cgroup assignment + capability drop
-│   ├── rootfs.c        OverlayFS setup + pivot_root
-│   ├── namespace.c     UID/GID map helpers
-│   ├── seccomp.c       BPF syscall whitelist
-│   └── runtime.h       Shared types and declarations
+├── init/               # PID 1 — mount, signals, zombie reaping
+├── supervisor/         # Service manager — spawn, parse, restart
+├── runtime/            # minc container runtime
+│   ├── minc.c          # CLI — arg parsing, container lifecycle
+│   ├── spawn.c         # clone() — PID/MNT/NET/UTS/IPC namespaces
+│   ├── rootfs.c        # OverlayFS setup + pivot_root
+│   ├── seccomp.c       # BPF syscall whitelist
+│   └── namespace.c     # Namespace helpers
+├── cgroup/             # cgmgr daemon — cgroup v2 limits
+├── netd/               # netd daemon — bridge + veth + NAT
 ├── tools/
-│   ├── cginspect.c     cgroup hierarchy inspector
-│   ├── nslist.c        namespace inspector
-│   ├── memhog.c        Memory allocator for OOM demo
-│   └── demo.sh         7-test capability demo script
+│   ├── mintab.c        # PTY session multiplexer
+│   ├── demo.sh         # Container feature demo script
+│   └── sysmon / pyrun  # System monitor, Python runner
 ├── projects/
-│   ├── sysmon/         Live container dashboard (auto OOM stress test)
-│   └── pyrun/          Container-gated Python runner demo
-├── services.d/         Service configs for supervisor
-│   ├── cgmgr.conf
-│   ├── netd.conf
-│   └── console.conf
-├── initramfs-stage1/   Stage-1 init shell script
-├── kernel/             kernel/config tracked; bzImage gitignored
-├── build/              All build and test scripts
-│   ├── build-all.sh        Full pipeline script
-│   ├── mkdisk.sh           Disk image assembler
-│   ├── mksquashfs.sh       SquashFS builder
-│   ├── mkstage1.sh         Stage-1 initramfs builder
-│   ├── mkrootfs.sh         Rootfs compiler
-│   ├── qemu.sh             Boot VM (socat console, no lag)
-│   ├── console.sh          Re-attach console to running VM
-│   ├── verify.sh           Build artifact verification
-│   └── fix_kernel_config.sh Kernel config patcher + rebuilder
-├── syslinux/           Bootloader config
-├── rootfs/             Compiled binaries staging area (gitignored)
-├── Makefile            Top-level build system
-└── README.md
+│   └── sysmon/         # TUI process monitor
+├── build/
+│   ├── mkdisk.sh       # Assemble bootable disk image
+│   ├── mksquashfs.sh   # Pack rootfs into SquashFS
+│   ├── mkrootfs.sh     # Compile all binaries + assemble rootfs/
+│   └── setup-langs.sh  # Stage Python 3.12 + TCC into rootfs/
+├── initramfs-stage1/   # Busybox initramfs — mounts SquashFS + overlay
+├── syslinux/           # Bootloader config
+├── services.d/         # Service definitions (cgmgr, netd, mintab, console)
+├── kernel/             # Kernel config (bzImage not tracked — too large)
+└── rootfs/             # Staged OS root (generated by make)
 ```
 
 ---
 
-## Prerequisites
+## Building
+
+### Prerequisites (Ubuntu / WSL2)
 
 ```bash
-# Ubuntu / WSL2
-sudo apt update && sudo apt install -y \
-  gcc make flex bison bc libssl-dev libelf-dev \
-  qemu-system-x86_64 socat \
-  squashfs-tools \
-  syslinux syslinux-common extlinux \
-  dosfstools e2fsprogs
+sudo apt update
+sudo apt install gcc make squashfs-tools syslinux-utils \
+                 qemu-system-x86 busybox-static rsync
 ```
 
-> ⚠️ **Build must be run inside WSL2 (Ubuntu)**. The scripts use Linux-specific tools (`losetup`, `mount`, `mksquashfs`, etc.).
-
-> ⚠️ For KVM acceleration (strongly recommended), enable nested virtualization in `%USERPROFILE%\.wslconfig`:
-> ```ini
-> [wsl2]
-> nestedVirtualization=true
-> ```
-> Then run `wsl --shutdown` and reopen WSL.
-
----
-
-## Quick Start
+### Build and Run
 
 ```bash
-git clone https://github.com/<you>/MinOS.git
-cd MinOS
+# 1. Stage language runtimes (Python 3.12 — downloads ~50 MB, one-time)
+bash build/setup-langs.sh
 
-# 1. Build kernel first (see Kernel section below), then:
-make
+# 2. Build disk image (compiles all C, packs SquashFS, writes disk)
+make image
 
-# 2. Boot in QEMU (uses socat for zero-lag console)
+# 3. Boot in QEMU
 make test
-# → MinOS boots to  ~ #
+```
 
-# 3. Run a container
-minc run /bin/echo "hello from container"
+> **Note:** The kernel (`kernel/bzImage`) is not tracked in git — it's 14 MB.  
+> Build it with your kernel config or download a pre-built one.
 
-# 4. Interactive container shell
+---
+
+## Container Usage
+
+### Run a one-shot command
+```sh
+minc run /bin/sh -c "hostname && ps"
+```
+
+### Interactive shell in a container
+```sh
 minc run -t /bin/sh
+```
 
-# 5. Memory-limited container
-minc run -t -m 10 /bin/sh
+### Run Python inside a container
+```sh
+minc run /usr/bin/python3 /home/hello.py
+minc run -t /usr/bin/python3 /home/todo.py
+```
+
+### Multiple concurrent containers with mintab
+```sh
+# Start background sessions
+mintab new minc run -t /bin/sh
+mintab new minc run -t /usr/bin/python3 /home/todo.py
+
+# List all running sessions
+mintab list
+
+# Attach to a session  (Ctrl+A then D to detach)
+mintab attach 0
+mintab attach 1
+
+# Kill a session
+mintab kill 0
 ```
 
 ---
 
-## Running Containers
+## Container Isolation
 
-All commands run from the MinOS shell (`~ #`) inside QEMU.
+Each `minc` container gets:
 
-```sh
-# Basic
-minc run /bin/echo "hello from container"
-minc run -t /bin/sh                        # interactive shell
+| Isolation | Mechanism |
+|---|---|
+| Own PID tree (container = PID 1) | `CLONE_NEWPID` |
+| Own filesystem root | `CLONE_NEWNS` + OverlayFS + `pivot_root` |
+| Own hostname | `CLONE_NEWUTS` |
+| Own network stack | `CLONE_NEWNET` |
+| Own IPC | `CLONE_NEWIPC` |
+| Memory / PID limits | cgroup v2 via `cgmgr` |
+| Syscall restriction | seccomp BPF whitelist |
+| No capability escalation | All capabilities dropped before exec |
 
-# With memory limit (MB)
-minc run -t -m 10 /bin/sh                 # 10 MB hard limit
-minc run -m 10 /bin/memhog 30             # OOM kill demo
+---
 
-# Inspect cgroup hierarchy
-cginspect
-ls /sys/fs/cgroup/containers/
+## Language Runtimes
 
-# Inspect namespaces
-nslist
-```
+Run `bash build/setup-langs.sh` once before `make image` to stage:
 
-Each container gets an auto-incrementing ID (`c0`, `c1`, …) and full isolation:
+- **Python 3.12** — musl-linked static binary from `python-build-standalone`
+- **TCC** — Tiny C Compiler, compiled statically, for in-container C execution
 
-```sh
-hostname          # → c1   (UTS namespace)
-ps                # → only sees its own PIDs (PID namespace)
-ls /              # → container OverlayFS root (not host files)
-```
+These are staged into `rootfs/usr/` and excluded from git (too large).
 
 ---
 
 ## Demo
 
-### Full capability demo (7 isolation tests)
 ```sh
-minc run -t -m 10 /bin/demo
-```
-Tests: UTS · PID · Mount/OverlayFS · Network · Capability drop · PIDs cgroup · Memory OOM kill
+# After booting:
 
-### Live container dashboard
-```sh
-minc run -t -m 10 /bin/sysmon
-```
-Live terminal UI: memory bar, PID bar, isolated process list. Auto-stresses memory every 20 seconds — watch the bar go red and the kernel OOM-kill the hog.
+# 1. Show OS identity
+uname -a && ps
 
-### Container-enforced Python runner
-```sh
-# Blocked on host:
-/bin/pyrun
-# → ACCESS DENIED — Container check failed
+# 2. Container isolation
+minc run /bin/sh -c "hostname && echo PID=\$\$"
 
-# Works inside a container:
-minc run -t /bin/pyrun 10 32
-# → shows add.py source + computes 10 + 32 = 42
-minc run -t /bin/pyrun 7 93
-```
-`pyrun` reads `/proc/self/cgroup` and refuses to execute unless the cgroup path starts with `/containers/`.
+# 3. Filesystem isolation (write inside, gone on host)
+minc run /bin/sh -c "echo secret > /tmp/f && cat /tmp/f"
+ls /tmp/f    # not here
 
-### OOM kill demo
-```sh
-minc run -m 10 /bin/memhog 30
-# → allocates 1MB at a time, watch it get SIGKILL'd at ~10MB
-# → exit code 137 = 128 + SIGKILL
+# 4. Python in a container
+minc run /usr/bin/python3 /home/hello.py
+
+# 5. Multiple containers simultaneously
+mintab new minc run -t /bin/sh
+mintab new minc run -t /usr/bin/python3 /home/todo.py
+mintab list
+mintab attach 0   # Ctrl+A D to detach
+mintab attach 1
 ```
 
 ---
 
-## Build Targets
+## What's NOT included
 
-```bash
-make              # build everything: init, supervisor, daemons, tools, projects, image
-make init         # compile init (PID 1)
-make daemons      # compile supervisor, cgmgr, netd, minc
-make tools        # compile cginspect, nslist, memhog, demo, sysmon, pyrun
-make image        # build squashfs + disk image (forces rebuild)
-make test         # boot myos.img in QEMU (interactive, socat console)
-make boot-log     # headless boot, output → build/boot.log
-make verify       # run artifact verification checks
-make clean        # remove all build artifacts
-```
-
----
-
-## Kernel
-
-The kernel binary (`kernel/bzImage`, ~14 MB) is gitignored. Build from Linux source:
-
-```bash
-# 1. Download Linux source
-wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.1.tar.xz
-tar -xf linux-6.1.tar.xz
-
-# 2. Apply MinOS config + resolve dependencies
-cp kernel/config linux-6.1/.config
-cd linux-6.1 && make olddefconfig
-
-# 3. Build
-make bzImage -j$(nproc)
-cp arch/x86/boot/bzImage ../MinOS/kernel/bzImage
-
-# Or use the automated script (also rebuilds the disk image):
-bash build/fix_kernel_config.sh
-```
-
-**Critical kernel options** (all set in `kernel/config`):
-
-| Config | Purpose |
-|--------|---------|
-| `CONFIG_SQUASHFS=y` | Read-only OS rootfs (**REQUIRED** — OS won't boot without it) |
-| `CONFIG_OVERLAY_FS=y` | OverlayFS for OS root + container rootfs |
-| `CONFIG_CGROUPS=y` | cgroup v2 support |
-| `CONFIG_MEMCG=y` | Memory controller (enables OOM kill) |
-| `CONFIG_CGROUP_PIDS=y` | PIDs controller |
-| `CONFIG_NAMESPACES=y` | All container namespaces |
-| `CONFIG_SECCOMP_FILTER=y` | BPF syscall filtering |
-| `CONFIG_VIRTIO_NET=y` + `CONFIG_VIRTIO_BLK=y` | QEMU virtio devices |
-| `CONFIG_USER_NS=y` | User namespace (UID/GID mapping) |
-
----
-
-## Verification
-
-```bash
-# Quick artifact check
-bash build/verify.sh
-
-# Phase-by-phase deep verification (211 checks)
-bash build/check_phases.sh
-
-# Expected:
-#   PASS: 211   WARN: 0   FAIL: 0
-#   Overall health: 100%
-```
-
----
-
-## Phase Roadmap
-
-| Phase | Component | Status |
-|-------|-----------|--------|
-| 1 | Dev environment (gcc, QEMU, tools) | ✅ |
-| 2 | Kernel config + bzImage | ✅ |
-| 3 | Custom init (PID 1) | ✅ |
-| 4 | Process supervisor | ✅ |
-| 5 | cgroup v2 manager | ✅ |
-| 6 | Network daemon (bridge + NAT) | ✅ |
-| 7 | Container runtime (minc) | ✅ |
-| 8 | Bootable disk image | ✅ |
-| 9 | Build system automation | ✅ |
-| 10 | Hardening + diagnostic tools | ✅ |
-| 11 | Demo suite (sysmon, pyrun, memhog) | ✅ |
-
----
-
-## License
-
-MIT
+- No systemd, no udev, no dbus
+- No glibc (Python uses musl; all OS binaries are statically linked)
+- No package manager
+- No kernel modules (monolithic minimal config)
