@@ -65,7 +65,6 @@ p
 ${PART2_START}
 ${PART1_END}
 a
-1
 n
 p
 2
@@ -84,7 +83,8 @@ echo "Loop device: $LOOP  (p1=${LOOP}p1  p2=${LOOP}p2)"
 
 # ── Format partition 1 as ext4 (boot + overlay) ───────────────────────────────
 echo "Formatting vda1 as ext4..."
-sudo mkfs.ext4 -L "MinOS-boot" "${LOOP}p1"
+# extlinux requires 32-bit ext4 without metadata checksums to boot correctly!
+sudo mkfs.ext4 -O ^64bit,^metadata_csum -L "MinOS-boot" "${LOOP}p1"
 
 # ── Write squashfs RAW to partition 2 (no filesystem — squashfs IS the fs) ────
 echo "Writing squashfs to vda2 (raw)..."

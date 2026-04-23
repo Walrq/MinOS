@@ -64,7 +64,8 @@ static void print_usage(void) {
         "  minc run [-t] <binary> [args...]\n"
         "\n"
         "Flags:\n"
-        "  -t   allocate controlling terminal (needed for interactive shells)\n"
+        "  -t       allocate controlling terminal (needed for interactive shells)\n"
+        "  -m <mb>  set memory limit in megabytes (e.g. -m 10)\n"
         "\n"
         "Examples:\n"
         "  minc run -t /bin/sh          interactive shell with job control\n"
@@ -81,13 +82,21 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    // Parse optional -t flag: minc run -t <binary> [args...]
+    // Parse optional flags: minc run [-t] [-m <MB>] <binary> [args...]
     int tty        = 0;
+    long long mem_limit = -1;
     int binary_idx = 2;   // index of binary in argv[]
 
-    if (argc > 3 && strcmp(argv[2], "-t") == 0) {
-        tty        = 1;
-        binary_idx = 3;
+    while (binary_idx < argc && argv[binary_idx][0] == '-') {
+        if (strcmp(argv[binary_idx], "-t") == 0) {
+            tty = 1;
+            binary_idx++;
+        } else if (strcmp(argv[binary_idx], "-m") == 0 && binary_idx + 1 < argc) {
+            mem_limit = atoll(argv[binary_idx + 1]) * 1024 * 1024;
+            binary_idx += 2;
+        } else {
+            break;
+        }
     }
 
     if (binary_idx >= argc) {
@@ -109,7 +118,7 @@ int main(int argc, char **argv) {
         .argv       = ctr_argv,
         .cpu_weight = 100,
         .pids_max   = 32,
-        .mem_max    = -1,
+        .mem_max    = mem_limit,
         .tty        = tty,
     };
 

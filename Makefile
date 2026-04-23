@@ -28,6 +28,10 @@ NETD_BIN      := $(ROOTFS)/services/netd
 MINC_BIN      := $(ROOTFS)/bin/minc
 CGINSPECT_BIN := $(ROOTFS)/bin/cginspect
 NSLIST_BIN    := $(ROOTFS)/bin/nslist
+MEMHOG_BIN    := $(ROOTFS)/bin/memhog
+DEMO_BIN      := $(ROOTFS)/bin/demo
+SYSMON_BIN    := $(ROOTFS)/bin/sysmon
+PYRUN_BIN     := $(ROOTFS)/bin/pyrun
 
 # ── Config dependencies ───────────────────────────────────────────────────────
 CONFIGS := $(wildcard services.d/cgmgr.conf services.d/netd.conf) \
@@ -127,10 +131,38 @@ $(NSLIST_BIN): tools/nslist.c | .stamps/rootfs-setup
 	$(CC) $(CFLAGS) -o $@ $<
 	@chmod +x $@ && echo "  → $@"
 
+# ── Compile: memhog (memory eater) ─────────────────────────────────────
+$(MEMHOG_BIN): tools/memhog.c | .stamps/rootfs-setup
+	@echo "━━━ [CC] memhog ━━━"
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -o $@ $<
+	@chmod +x $@ && echo "  → $@"
+
+# ── Copy: demo.sh ─────────────────────────────────────────────────────────────
+$(DEMO_BIN): tools/demo.sh | .stamps/rootfs-setup
+	@echo "━━━ [CP] demo.sh ━━━"
+	@mkdir -p $(@D)
+	cp $< $@
+	@chmod +x $@ && echo "  → $@"
+
+# ── Compile: sysmon (live container dashboard) ─────────────────────────────────
+$(SYSMON_BIN): projects/sysmon/sysmon.c | .stamps/rootfs-setup
+	@echo "━━━ [CC] sysmon ━━━"
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -o $@ $<
+	@chmod +x $@ && echo "  → $@"
+
+# ── Compile: pyrun (container-gated Python runner) ──────────────────────────
+$(PYRUN_BIN): projects/pyrun/pyrun.c | .stamps/rootfs-setup
+	@echo "━━━ [CC] pyrun ━━━"
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -o $@ $<
+	@chmod +x $@ && echo "  → $@"
+
 # ── Named targets for compilation groups ─────────────────────────────────────
 init:    $(INIT_BIN)
 daemons: $(SUP_BIN) $(CGMGR_BIN) $(NETD_BIN) $(MINC_BIN)
-tools:   $(CGINSPECT_BIN) $(NSLIST_BIN)
+tools:   $(CGINSPECT_BIN) $(NSLIST_BIN) $(MEMHOG_BIN) $(DEMO_BIN) $(SYSMON_BIN) $(PYRUN_BIN)
 
 # ── Stage-1 initramfs ─────────────────────────────────────────────────────────
 initramfs-stage1.cpio: $(wildcard initramfs-stage1/*) $(BUSYBOX)
@@ -139,7 +171,8 @@ initramfs-stage1.cpio: $(wildcard initramfs-stage1/*) $(BUSYBOX)
 
 # ── Squashfs OS root ──────────────────────────────────────────────────────────
 os-root.squashfs: $(INIT_BIN) $(SUP_BIN) $(CGMGR_BIN) $(NETD_BIN) $(MINC_BIN) \
-                   $(CGINSPECT_BIN) $(NSLIST_BIN) \
+                   $(CGINSPECT_BIN) $(NSLIST_BIN) $(MEMHOG_BIN) \
+                   $(DEMO_BIN) $(SYSMON_BIN) $(PYRUN_BIN) \
                    .stamps/rootfs-setup
 	@echo "━━━ [squashfs] packing OS root ━━━"
 	bash build/mksquashfs.sh
@@ -153,11 +186,23 @@ myos.img: os-root.squashfs kernel/bzImage initramfs-stage1.cpio
 
 image: myos.img
 
-# ── Test: boot in QEMU and log output ────────────────────────────────────────
+# ── Test: boot in QEMU (interactive) ────────────────────────────────────────
 test: myos.img
-	@echo "━━━ [test] booting — output logged to build/boot.log ━━━"
-	@echo "  (Ctrl+A  X  to exit QEMU)"
-	bash build/qemu.sh 2>&1 | tee build/boot.log
+	@echo "━━━ [test] booting MinOS ━━━"
+	@echo "  Ctrl+] to detach console  |  killall qemu-system-x86_64 to quit"
+	bash build/qemu.sh
+
+# ── Boot-log: boot headless and capture serial output to build/boot.log ──────
+# Runs QEMU with -serial stdio (no socat) and saves output. Non-interactive.
+boot-log: myos.img
+	@echo "━━━ [boot-log] booting headless → build/boot.log ━━━"
+	qemu-system-x86_64 \
+	    -drive file=myos.img,format=raw,if=virtio,cache=unsafe \
+	    -m 256M -smp 2 \
+	    $(shell [ -e /dev/kvm ] && echo '-enable-kvm -cpu host' || echo '-cpu qemu64') \
+	    -rtc clock=host -nographic \
+	    -serial stdio -no-reboot \
+	    2>&1 | tee build/boot.log
 
 # ── Verify: run the verification suite ───────────────────────────────────────
 verify: myos.img

@@ -42,9 +42,19 @@ chmod +x "$ROOTFS/services/netd"
 
 echo "[5/5] Compiling minc..."
 cd "$MINOS_DIR/runtime"
-gcc -static -o minc minc.c spawn.c
+gcc -static -o minc minc.c spawn.c rootfs.c seccomp.c namespace.c
 cp minc "$ROOTFS/bin/minc"
 chmod +x "$ROOTFS/bin/minc"
+
+echo "[6/6] Compiling memhog..."
+cd "$MINOS_DIR/tools"
+gcc -static -o memhog memhog.c
+cp memhog "$ROOTFS/bin/memhog"
+chmod +x "$ROOTFS/bin/memhog"
+
+echo "[7/7] Copying demo script..."
+cp "$MINOS_DIR/tools/demo.sh" "$ROOTFS/bin/demo"
+chmod +x "$ROOTFS/bin/demo"
 
 # ── BusyBox for shell + tools ──────────────────────────────────────────────────
 BUSYBOX=$(which busybox 2>/dev/null || true)

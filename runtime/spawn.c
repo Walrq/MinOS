@@ -179,6 +179,17 @@ int container_spawn(const ContainerConfig *cfg) {
     fd = open(pids_path, O_WRONLY);
     if (fd >= 0) { write(fd, pids_val, strlen(pids_val)); close(fd); }
 
+    // Apply memory.max (if set)
+    if (cfg->mem_max > 0) {
+        char mem_path[320], mem_val[32];
+        snprintf(mem_path, sizeof(mem_path),
+                 "/sys/fs/cgroup/containers/%s/memory.max", cfg->id);
+        snprintf(mem_val, sizeof(mem_val), "%lld", cfg->mem_max);
+        fd = open(mem_path, O_WRONLY);
+        if (fd >= 0) { write(fd, mem_val, strlen(mem_val)); close(fd); }
+    }
+
+
     // ── Unblock the child ──────────────────────────────────────────────────────
     write(sync_pipe[1], "1", 1);
     close(sync_pipe[1]);
